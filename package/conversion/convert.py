@@ -8,7 +8,9 @@ from moviepy.editor import VideoFileClip
 
 
 
-# TODO ValueError - create my exeption class 
+class ConvertErrorYouTube(Exception):
+    def __init__(self, message):
+        super().__init__(message)
 
 class ConvertYouTube(YouTube):
     # TODO название? 
@@ -19,24 +21,27 @@ class ConvertYouTube(YouTube):
         self.path_mp4 : str | None = None # путь к скачаному фалу мп4
         self.path_mp3 : str | None = None # путь к конвентированому фалу мп3
        
-    # TODO Validation link(url)
+    @ classmethod
+    def valid_one_video_link(cls, link: str) -> None:
+        if not link.startswith("https://www.youtube.com/watch?v="):
+            raise ConvertErrorYouTube("Not valid link")
 
     def __get_stream_mp4(self) -> Stream | None:
         # выбираем из списка стримов mp4 с максимальним качеством
         if self.length > 641 : # продолжительность видео в секундах
-            raise ValueError("I can't load to long video")
+            raise ConvertErrorYouTube("I can't load to long video")
         self.stream_mp4 = self.streams.filter(mime_type="video/mp4").get_highest_resolution()
 
     def __load_mp4_to_temp(self):
         # скачиваем вибраний стрим в папку темп если он есть ложим в поле путь к мп4 
         if self.stream_mp4 is None:
-            raise ValueError("Can't fount mp4 stream from this video")
+            raise ConvertErrorYouTube("Can't fount mp4 stream from this video")
         self.path_mp4 = self.stream_mp4.download(output_path="temp", max_retries=3) 
 
     def __from_mp4_to_mp3(self):
         # конвертируем из мп4 в мп3 ложим в поле путь мп3  
         if not os.path.exists(self.path_mp4):
-            raise ValueError(f"can't found mp4 file {self.path_mp4}")
+            raise ConvertErrorYouTube(f"can't found mp4 file {self.path_mp4}")
         
         with VideoFileClip(self.path_mp4) as video:
             path_mp3 = os.path.splitext(self.path_mp4)[0] + ".mp3"
@@ -44,7 +49,7 @@ class ConvertYouTube(YouTube):
             audio.write_audiofile(path_mp3)
 
         if not os.path.exists(path_mp3):
-            raise ValueError(f"can't found mp4 file {path_mp3}")    
+            raise ConvertErrorYouTube(f"can't found mp4 file {path_mp3}")    
         self.path_mp3 = path_mp3 
 
     def __del_mp4(self):
