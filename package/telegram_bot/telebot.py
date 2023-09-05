@@ -16,25 +16,17 @@ def error_handler(update: Update, context: CallbackContext):
     try:
         raise context.error
     except ConvertErrorYouTube:
-        context.bot.send_message(
-        chat_id = update.effective_chat.id,
-        text=f"Error {context.error} "
-        )
+        context.bot.send_message(chat_id = update.effective_chat.id, text=f"Error {context.error}.")
     
 def download_mp3(update: Update, context: CallbackContext) -> None:
     link = update.message.text
+    # TODO search in DB -> if else
     ConvertYouTube.valid_one_video_link(link)
     yt = ConvertYouTube(link)
-    context.bot.send_message(
-    chat_id = update.effective_chat.id,
-    text="Please wait loading."
-    )
+    context.bot.send_message(chat_id = update.effective_chat.id, text="Please wait loading.")
     yt.link_to_mp3_transaction()
-    context.bot.send_audio(
-        chat_id=update.message.chat_id, 
-        audio = open(yt.path_mp3, "rb")
-        )
-
+    context.bot.send_audio(chat_id=update.message.chat_id, audio=open(yt.path_mp3, "rb"))
+    # TODO add to DB 
 
 def run_telebot():
     updater = Updater(TOKEN_API, use_context=True)

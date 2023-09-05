@@ -1,11 +1,10 @@
-
 from typing import Any, Callable, Dict, Optional
+from urllib.error import HTTPError, URLError
 import os
 
 from pytube import YouTube, Stream
+# from pytube.exceptions import FileExistsError
 from moviepy.editor import VideoFileClip
-
-
 
 
 class ConvertErrorYouTube(Exception):
@@ -21,7 +20,7 @@ class ConvertYouTube(YouTube):
         self.path_mp4 : str | None = None # путь к скачаному фалу мп4
         self.path_mp3 : str | None = None # путь к конвентированому фалу мп3
        
-    @ classmethod
+    @classmethod # TODO  + valid playlist link + (valid shazam link -> parser)
     def valid_one_video_link(cls, link: str) -> None:
         if not link.startswith("https://www.youtube.com/watch?v="):
             raise ConvertErrorYouTube("Not valid link")
@@ -31,47 +30,56 @@ class ConvertYouTube(YouTube):
         if self.length > 641 : # продолжительность видео в секундах
             raise ConvertErrorYouTube("I can't load to long video")
         self.stream_mp4 = self.streams.filter(mime_type="video/mp4").get_highest_resolution()
+        if self.stream_mp4 is None:
+            raise ConvertErrorYouTube("Can't find mp4 streams for this video")
 
     def __load_mp4_to_temp(self):
-        # скачиваем вибраний стрим в папку темп если он есть ложим в поле путь к мп4 
-        if self.stream_mp4 is None:
-            raise ConvertErrorYouTube("Can't fount mp4 stream from this video")
-        self.path_mp4 = self.stream_mp4.download(output_path="temp", max_retries=3) 
+        # скачиваем вибраний стрим в папку темп если он есть ложим в поле путь к мп4
+        try: 
+            self.path_mp4 = self.stream_mp4.download(output_path="temp", max_retries=3)
+        except (HTTPError, URLError):
+            raise ConvertErrorYouTube("HTTPError/URLError - network error")
+        # except FileExistsError:
+        #     pass 
+        # # TODO ситуация когда одновременно скачивают видео с одинаковими названиями
+        # конфликт двух одинакових ссилок уберет БД а названий нет
 
     def __from_mp4_to_mp3(self):
         # конвертируем из мп4 в мп3 ложим в поле путь мп3  
         if not os.path.exists(self.path_mp4):
             raise ConvertErrorYouTube(f"can't found mp4 file {self.path_mp4}")
         
-        with VideoFileClip(self.path_mp4) as video:
-            path_mp3 = os.path.splitext(self.path_mp4)[0] + ".mp3"
-            audio = video.audio
-            audio.write_audiofile(path_mp3)
-
+        try:
+            with VideoFileClip(self.path_mp4) as video:
+                path_mp3 = os.path.splitext(self.path_mp4)[0] + ".mp3"
+                audio = video.audio
+                audio.write_audiofile(path_mp3)
+        except (OSError, ValueError) as e:
+            raise ConvertErrorYouTube(f"Error during MP4 to MP3 conversion: {str(e)}")
+        
         if not os.path.exists(path_mp3):
-            raise ConvertErrorYouTube(f"can't found mp4 file {path_mp3}")    
+            raise ConvertErrorYouTube(f"can't found mp3 file {path_mp3}")
+            
         self.path_mp3 = path_mp3 
 
     def __del_mp4(self):
-        # удаляем мп4 лодим в поле None
-        self.path_mp4 = os.remove(self.path_mp4)
+        # Удаляем мп4 и обнуляем поле
+        if self.path_mp4 is not None:
+            try:
+                os.unlink(self.path_mp4)
+            except FileNotFoundError:
+                pass
+        self.path_mp4 = None
     
     def __mp3_to_bytes(self) -> bytes:
-        # TODO а чо можно такое провернуть через os??
         with open(self.path_mp3, "rb") as file_mp3:
             return file_mp3.read()
        
     def link_to_mp3_transaction(self): 
-        #TODO соответсвующее название метода которий делает все в нужном нам порядке подобие "транзакции"
-        # получаем стрим - качаем - конвертируем  - удаляем мп4
-        # после применения єтого метода можем визвать to_dict
         self.__get_stream_mp4()
         self.__load_mp4_to_temp()
         self.__from_mp4_to_mp3()
         self.__del_mp4()
-        # подходит ли сюда по контексту  __mp3_to_bytes ?
-        # TODO если на всех этапах ок(или на последнем получили файл мп3) 
-        # то ли тут вернуть словарь(to_dict)/None
         
     def to_dict_db(self) -> dict | None:
         # словарь подготовка для записи в БД
@@ -86,37 +94,10 @@ class ConvertYouTube(YouTube):
         }
         
 if __name__ == "__main__":
-
-    link = "https://www.youtube.com/watch?v=sVx1mJDeUjY"
-    yt = ConvertYouTube(link)
-    yt.link_to_mp3_transaction()
-    print(yt.to_dict_db())
+    pass
 
 
 
-
-
-# url = YouTube(link)
-# # song, autor, id , sec =  url.title, url.author url.video_id, url.length
-
-# stream_video_mp4 = url.streams.filter(mime_type="video/mp4").get_highest_resolution()
-
-# # mp4path = stream_video_mp4.download()
-# mp3path = f"{song}.mp3"
-
-# # def converttomp3(mp4file, mp3file):
-# #     video = VideoFileClip(mp4file, audio_fps=44100)
-# #     audio=video.audio
-# #     audio.write_audiofile(mp3file)
-# #     audio.close()
-# #     video.close()
-
-# # converttomp3(mp4path, mp3path)
-
-# with open(mp3path, "rb" ) as file:
-#     mp3bin = file.read()
-
-# print(type(mp3bin))
 
 
 
